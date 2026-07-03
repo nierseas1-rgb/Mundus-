@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The whole UI is Jetpack Compose, so we only need a minimal platform theme
+      (no ActionBar, dark window background). Using a framework theme avoids pulling
+      in the Material Components (View) library.
+    -->
+    <style name="Theme.Mundus" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
