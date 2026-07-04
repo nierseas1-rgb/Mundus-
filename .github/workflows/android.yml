@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -34,3 +34,17 @@ jobs:
           name: mundus-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # Publish a rolling "debug-latest" pre-release so the APK has a stable,
+      # direct download URL — ideal for sideloading on Android TV via Downloader.
+      - name: Publish APK to debug-latest release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: Mundus (debug, dernier build)
+          prerelease: true
+          files: app/build/outputs/apk/debug/app-debug.apk
+          body: |
+            APK debug le plus récent, reconstruit automatiquement à chaque push.
+            Lien direct : téléchargez `app-debug.apk` ci-dessous.
