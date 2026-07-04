@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,7 +42,7 @@ import com.mundus.ui.components.ChannelCard
 fun ChannelsScreen(
     state: UiState,
     vm: MainViewModel,
-    onPlay: (Channel) -> Unit,
+    onPlay: (List<Channel>, Int) -> Unit,
 ) {
     val theme = LocalSectionTheme.current
     var query by remember { mutableStateOf("") }
@@ -124,13 +124,13 @@ fun ChannelsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(channels, key = { it.id }) { channel ->
+                itemsIndexed(channels, key = { _, it -> it.id }) { index, channel ->
                     ChannelCard(
                         channel = channel,
                         guide = state.guides[channel.epgChannelId],
                         nowMs = nowMs,
                         isFavorite = state.favorites.contains(channel.id),
-                        onClick = { onPlay(channel) },
+                        onClick = { onPlay(channels, index) },
                         onToggleFavorite = { vm.toggleFavorite(channel.id) },
                     )
                 }

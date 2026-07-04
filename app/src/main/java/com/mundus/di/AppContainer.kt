@@ -6,7 +6,7 @@ import com.mundus.data.repo.EpgRepository
 import com.mundus.data.repo.PersistentStore
 import com.mundus.data.repo.SourceRepository
 import com.mundus.data.xtream.XtreamClient
-import com.mundus.plugin.PluginRegistry
+import com.mundus.plugin.PluginRepository
 
 /**
  * Manual dependency container (no Hilt/kapt on purpose — keeps the build simple and
@@ -15,9 +15,9 @@ import com.mundus.plugin.PluginRegistry
 class AppContainer(context: Context) {
     val http = Http()
     val xtreamClient = XtreamClient(http)
-    val pluginRegistry = PluginRegistry()
+    val pluginRepository = PluginRepository(http)
     val store = PersistentStore(context.applicationContext)
 
-    val sourceRepository = SourceRepository(http, xtreamClient, pluginRegistry)
+    val sourceRepository = SourceRepository(http, xtreamClient)
     val epgRepository = EpgRepository(http)
 }

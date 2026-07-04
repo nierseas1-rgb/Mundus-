@@ -1,70 +1,65 @@
-# Plugins Mundus (esprit Kodi)
+# Plugins Mundus (esprit Kodi) — data-driven, rien d'intégré
 
-Les plugins sont la brique « ouverte » de Mundus : ils ajoutent des chaînes
-(Vavoo, sites de streaming, API perso…) et savent transformer une entrée en flux
-lisible au moment de la lecture.
+Les plugins sont la brique « ouverte » de Mundus. **Aucun n'est fourni avec l'app** :
+l'utilisateur ajoute n'importe quel plugin depuis l'onglet **Plugins** en collant une URL.
 
-## Le contrat
+## Deux façons d'ajouter un plugin
 
-Un plugin implémente [`MundusPlugin`](../app/src/main/java/com/mundus/plugin/MundusPlugin.kt) :
+1. **Un lien `.m3u` / `.m3u8`** → transformé automatiquement en plugin M3U.
+2. **Une URL vers une définition JSON** (le format ci-dessous) → plugin M3U, JSON ou Xtream.
 
-```kotlin
-interface MundusPlugin {
-    val manifest: PluginManifest
-    suspend fun init(context: PluginContext) {}
-    suspend fun getChannels(context: PluginContext): List<Channel>
-    suspend fun resolveStream(context: PluginContext, channel: Channel): ResolvedStream =
-        ResolvedStream(channel.streamUrl)
-    suspend fun search(context: PluginContext, query: String): List<Channel> = /* défaut */
+Vavoo, par exemple, s'ajoute exactement comme ça — ce n'est qu'un plugin parmi d'autres.
+
+## Format d'une définition (`PluginDefinition`)
+
+```json
+{
+  "id": "mon-plugin",
+  "name": "Mon Plugin",
+  "version": "1.0.0",
+  "description": "Chaînes de démonstration",
+  "type": "JSON",                     // M3U | JSON | XTREAM
+  "catalogUrl": "https://exemple.tld/catalog.json",
+  "requiresResolution": false,
+  "resolverUrl": "https://exemple.tld/resolve?url=",
+  "userAgent": "MonUA/1.0",
+  "referer": "https://exemple.tld",
+  "json": {
+    "root": "channels",               // clé contenant le tableau (optionnel)
+    "name":  ["name", "title"],
+    "url":   ["url", "stream"],
+    "logo":  ["logo", "icon"],
+    "group": ["group", "category"],
+    "id":    ["id"]
+  }
 }
 ```
 
-- **`manifest`** — identité, sections couvertes, capacités, schéma de config.
-- **`getChannels`** — renvoie les chaînes ; doit être **résilient** (renvoyer ce qu'il
-  peut plutôt que lever une exception, pour ne pas casser la bibliothèque fusionnée).
-- **`resolveStream`** — appelé juste avant lecture quand `Channel.requiresResolution`
-  est `true` (URLs signées / éphémères).
-- **`PluginContext`** — fournit `http` (OkHttp partagé), la `config` de l'utilisateur
-  et un `log`. Volontairement **sans type UI Android**.
+- **`type: M3U`** → `catalogUrl` pointe vers une playlist M3U (parsée par `M3uParser`).
+- **`type: JSON`** → `catalogUrl` renvoie un tableau d'objets ; `json` mappe les champs
+  (chaque entrée est une liste de clés candidates, essayées dans l'ordre).
+- **`type: XTREAM`** → `catalogUrl` = hôte de base `http://serveur:port`, avec
+  `xtreamUsername` / `xtreamPassword`.
+- **`requiresResolution` + `resolverUrl`** → si le flux doit être « signé » juste avant
+  lecture : Mundus appelle `resolverUrl + streamUrl` et attend l'URL jouable en réponse.
+- **`userAgent` / `referer`** → en-têtes HTTP ajoutés aux requêtes du plugin.
 
-## Écrire un plugin (intégré)
+La section (TV / Films / Séries / Animés) de chaque chaîne est déduite automatiquement du
+groupe/nom (comme pour les playlists M3U).
 
-1. Créez une classe dans `com.mundus.plugin.builtin` qui implémente `MundusPlugin`.
-2. Renseignez un `PluginManifest` (id unique, `configSchema` pour les champs attendus).
-3. Enregistrez-le dans [`PluginRegistry`](../app/src/main/java/com/mundus/plugin/PluginRegistry.kt) :
+## Comment ça marche en interne
 
-```kotlin
-init {
-    register(VavooPlugin())
-    register(MonSitePlugin()) // ← votre plugin
-}
-```
+- [`PluginRepository`](../app/src/main/java/com/mundus/plugin/PluginRepository.kt) télécharge
+  et interprète l'URL (JSON ou repli M3U), et renvoie une `PluginDefinition`.
+- La définition est **persistée** ; le plugin apparaît dans l'onglet Plugins.
+- **Activer** un plugin crée une source fusionnée dans la bibliothèque.
+- [`PluginEngine`](../app/src/main/java/com/mundus/plugin/PluginEngine.kt) exécute la
+  définition (chargement des chaînes + résolution des flux).
 
-4. Dans l'app : onglet **Plugins → Activer**. Il devient une *source* et ses chaînes
-   sont fusionnées avec le reste, avec inférence de section (TV/Film/Série/Animé).
+## Feuille de route
 
-## Exemple : le plugin Vavoo
-
-Voir [`VavooPlugin`](../app/src/main/java/com/mundus/plugin/builtin/VavooPlugin.kt). Points clés :
-
-- **URL de catalogue configurable** (`catalog_url`) plutôt que codée en dur — ces
-  endpoints bougent et leur format varie ; on parse défensivement.
-- **Résolution paresseuse** via `resolver_url` optionnel.
-- **Repli hors-ligne** : sans réseau, un petit jeu de démo garde l'UI utilisable.
-
-Pour du contenu réel, renseignez `catalog_url` (et `resolver_url` si nécessaire) au
-moment d'ajouter la source.
-
-## Feuille de route : plugins externes
-
-L'objectif « façon Kodi » à terme :
-
-1. **Sources déclaratives** (sûr, court terme) : un manifeste JSON distant décrivant des
-   endpoints (M3U/Xtream/API) — pas de code exécuté, donc pas de risque d'exécution
-   arbitraire. Idéal pour des « dépôts » communautaires.
-2. **Plugins de code** (moyen terme) : chargement via `DexClassLoader` depuis un APK/DEX
-   signé, avec permissions explicites et exécution isolée. Le contrat `MundusPlugin`
-   restant stable, le code des plugins n'aurait pas à changer.
-
-La sécurité (signature, permissions réseau, isolation) est un prérequis avant d'activer
-l'exécution de code tiers.
+1. **Dépôts de plugins** : une URL renvoyant une liste de définitions (façon dépôt Kodi).
+2. **Plugins de code** (avancé) : chargement d'un module signé via `DexClassLoader`, avec
+   permissions explicites et isolation — pour les cas qui dépassent le modèle déclaratif.
+   La sécurité (signature, permissions, sandbox) est un prérequis avant d'exécuter du code
+   tiers.

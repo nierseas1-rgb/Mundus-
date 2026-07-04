@@ -27,11 +27,14 @@ import com.mundus.ui.screens.SourcesScreen
 
 enum class Route { CHANNELS, GUIDE, SOURCES, PLUGINS, SETTINGS }
 
+/** A playback request: the channel list to zap through and the starting index. */
+data class Playback(val channels: List<Channel>, val index: Int)
+
 @Composable
 fun RootScreen(vm: MainViewModel) {
     val state by vm.state.collectAsState()
     var route by remember { mutableStateOf(Route.CHANNELS) }
-    var playing by remember { mutableStateOf<Channel?>(null) }
+    var playback by remember { mutableStateOf<Playback?>(null) }
 
     MundusTheme(section = state.activeSection) {
         val theme = LocalSectionTheme.current
@@ -45,8 +48,8 @@ fun RootScreen(vm: MainViewModel) {
                 )
                 Box(Modifier.weight(1f).fillMaxSize().padding(24.dp)) {
                     when (route) {
-                        Route.CHANNELS -> ChannelsScreen(state, vm, onPlay = { playing = it })
-                        Route.GUIDE -> GuideScreen(state, onPlay = { playing = it })
+                        Route.CHANNELS -> ChannelsScreen(state, vm, onPlay = { list, i -> playback = Playback(list, i) })
+                        Route.GUIDE -> GuideScreen(state, onPlay = { list, i -> playback = Playback(list, i) })
                         Route.SOURCES -> SourcesScreen(state, vm)
                         Route.PLUGINS -> PluginsScreen(state, vm)
                         Route.SETTINGS -> SettingsScreen(state, vm)
@@ -54,8 +57,13 @@ fun RootScreen(vm: MainViewModel) {
                 }
             }
 
-            playing?.let { channel ->
-                PlayerScreen(channel = channel, vm = vm, onClose = { playing = null })
+            playback?.let { pb ->
+                PlayerScreen(
+                    channels = pb.channels,
+                    startIndex = pb.index,
+                    vm = vm,
+                    onClose = { playback = null },
+                )
             }
         }
     }

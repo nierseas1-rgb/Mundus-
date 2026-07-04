@@ -11,7 +11,8 @@ import com.mundus.core.model.Section
 import com.mundus.core.model.Source
 import com.mundus.data.repo.AppState
 import com.mundus.di.AppContainer
-import com.mundus.plugin.PluginContext
+import com.mundus.plugin.PluginDefinition
+import com.mundus.plugin.PluginEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.withContext
 data class UiState(
     val activeSection: Section = Section.LIVE_TV,
     val sources: List<Source> = emptyList(),
+    val plugins: List<PluginDefinition> = emptyList(),
     val allChannels: List<Channel> = emptyList(),
     val settings: PlayerSettings = PlayerSettings.Default,
     val favorites: Set<String> = emptySet(),
@@ -30,6 +32,8 @@ data class UiState(
     val loading: Boolean = false,
     val perSourceCounts: Map<String, Int> = emptyMap(),
     val errors: Map<String, String> = emptyMap(),
+    /** Transient message for the plugin screen (add success/failure). */
+    val pluginMessage: String? = null,
 ) {
     /** Channels of the active section (the merged, multi-playlist library). */
     val sectionChannels: List<Channel>
@@ -54,6 +58,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         _state.update {
             it.copy(
                 sources = persisted.sources,
+                plugins = persisted.plugins,
                 settings = persisted.settings,
                 favorites = persisted.favorites,
                 activeSection = Section.fromId(persisted.activeSectionId),
@@ -68,12 +73,12 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun refresh() {
-        val sources = _state.value.sources
-        if (sources.none { it.enabled }) return
+        val s = _state.value
+        if (s.sources.none { it.enabled }) return
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
-            val result = container.sourceRepository.loadAll(sources)
-            val guides = container.epgRepository.refresh(sources)
+            val result = container.sourceRepository.loadAll(s.sources, s.plugins)
+            val guides = container.epgRepository.refresh(s.sources)
             _state.update {
                 it.copy(
                     loading = false,
@@ -112,6 +117,58 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         refresh()
     }
 
+    // --- Plugins (user-installable, nothing bundled) ---
+
+    /** Add a plugin from a URL (JSON definition or direct .m3u). */
+    fun addPluginFromUrl(url: String) {
+        if (url.isBlank()) return
+        viewModelScope.launch {
+            _state.update { it.copy(pluginMessage = "Chargement du plugin…") }
+            val result = withContext(Dispatchers.IO) {
+                runCatching { container.pluginRepository.fetchDefinition(url) }
+            }
+            result.onSuccess { def ->
+                _state.update {
+                    val others = it.plugins.filterNot { p -> p.id == def.id }
+                    it.copy(plugins = others + def, pluginMessage = "Plugin ajouté : ${def.name}")
+                }
+                persist()
+            }.onFailure { e ->
+                _state.update { it.copy(pluginMessage = "Échec : ${e.message ?: "URL invalide"}") }
+            }
+        }
+    }
+
+    fun removePlugin(id: String) {
+        _state.update { st ->
+            st.copy(
+                plugins = st.plugins.filterNot { it.id == id },
+                sources = st.sources.filterNot { it.pluginId == id },
+                allChannels = st.allChannels.filterNot { c ->
+                    st.sources.any { it.id == c.sourceId && it.pluginId == id }
+                },
+            )
+        }
+        persist()
+    }
+
+    fun clearPluginMessage() {
+        _state.update { it.copy(pluginMessage = null) }
+    }
+
+    /** Activate an installed plugin as a merged source. */
+    fun activatePlugin(def: PluginDefinition) {
+        if (_state.value.sources.any { it.pluginId == def.id }) return
+        addSource(
+            Source(
+                id = java.util.UUID.randomUUID().toString(),
+                name = def.name,
+                kind = com.mundus.core.model.SourceKind.PLUGIN,
+                pluginId = def.id,
+            )
+        )
+    }
+
     fun updateSettings(settings: PlayerSettings) {
         _state.update { it.copy(settings = PlayerSettings.sanitize(settings)) }
         persist()
@@ -128,20 +185,18 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
 
     fun channelById(id: String): Channel? = _state.value.allChannels.firstOrNull { it.id == id }
 
-    fun pluginManifests() = container.pluginRegistry.manifests()
-
     /**
      * Resolve a channel to a concrete playable url just before playback. Plugin
-     * channels may need a signing/resolve step; direct urls pass through.
+     * channels may need a resolve step; direct urls pass through.
      */
     suspend fun resolvePlayableUrl(channel: Channel): String {
         if (!channel.requiresResolution) return channel.streamUrl
-        val source = _state.value.sources.firstOrNull { it.id == channel.sourceId }
-        val plugin = container.pluginRegistry.get(source?.pluginId ?: channel.sourceId)
-            ?: return channel.streamUrl
-        val ctx = PluginContext(container.http, source?.pluginConfig ?: emptyMap(), plugin.manifest.id)
+        val s = _state.value
+        val source = s.sources.firstOrNull { it.id == channel.sourceId }
+        val def = s.plugins.firstOrNull { it.id == source?.pluginId } ?: return channel.streamUrl
         return withContext(Dispatchers.IO) {
-            runCatching { plugin.resolveStream(ctx, channel).url }.getOrDefault(channel.streamUrl)
+            runCatching { PluginEngine.resolve(def, container.http, channel) }
+                .getOrDefault(channel.streamUrl)
         }
     }
 
@@ -150,6 +205,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         container.store.save(
             AppState(
                 sources = s.sources,
+                plugins = s.plugins,
                 settings = s.settings,
                 favorites = s.favorites,
                 activeSectionId = s.activeSection.id,

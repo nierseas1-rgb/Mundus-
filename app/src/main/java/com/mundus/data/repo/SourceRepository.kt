@@ -6,13 +6,12 @@ import com.mundus.core.model.SourceKind
 import com.mundus.data.http.Http
 import com.mundus.data.m3u.M3uParser
 import com.mundus.data.xtream.XtreamClient
-import com.mundus.plugin.PluginContext
-import com.mundus.plugin.PluginRegistry
+import com.mundus.plugin.PluginDefinition
+import com.mundus.plugin.PluginEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
 
 /**
  * Fetches every enabled [Source] and merges the results into a single channel
@@ -25,7 +24,6 @@ import kotlinx.coroutines.withContext
 class SourceRepository(
     private val http: Http,
     private val xtream: XtreamClient,
-    private val plugins: PluginRegistry,
 ) {
     data class LoadResult(
         val channels: List<Channel>,
@@ -33,10 +31,13 @@ class SourceRepository(
         val errors: Map<String, String>,
     )
 
-    suspend fun loadAll(sources: List<Source>): LoadResult = coroutineScope {
+    suspend fun loadAll(
+        sources: List<Source>,
+        plugins: List<PluginDefinition>,
+    ): LoadResult = coroutineScope {
         val enabled = sources.filter { it.enabled }
         val jobs = enabled.map { source ->
-            async(Dispatchers.IO) { source.id to runCatching { load(source) } }
+            async(Dispatchers.IO) { source.id to runCatching { load(source, plugins) } }
         }
         val results = jobs.awaitAll()
 
@@ -52,31 +53,26 @@ class SourceRepository(
         LoadResult(channels = dedupe(merged), perSource = perSource, errors = errors)
     }
 
-    private suspend fun load(source: Source): List<Channel> = when (source.kind) {
-        SourceKind.M3U -> {
-            val url = source.m3uUrl ?: return emptyList()
-            M3uParser.parse(http.getText(url), source.id, source.name)
-        }
+    private fun load(source: Source, plugins: List<PluginDefinition>): List<Channel> =
+        when (source.kind) {
+            SourceKind.M3U -> {
+                val url = source.m3uUrl ?: return emptyList()
+                M3uParser.parse(http.getText(url), source.id, source.name)
+            }
 
-        SourceKind.XTREAM -> xtream.fetchAll(
-            baseHost = source.xtreamHost.orEmpty(),
-            username = source.xtreamUsername.orEmpty(),
-            password = source.xtreamPassword.orEmpty(),
-            sourceId = source.id,
-            sourceName = source.name,
-        )
+            SourceKind.XTREAM -> xtream.fetchAll(
+                baseHost = source.xtreamHost.orEmpty(),
+                username = source.xtreamUsername.orEmpty(),
+                password = source.xtreamPassword.orEmpty(),
+                sourceId = source.id,
+                sourceName = source.name,
+            )
 
-        SourceKind.PLUGIN -> {
-            val plugin = plugins.get(source.pluginId) ?: return emptyList()
-            val ctx = PluginContext(http, source.pluginConfig, plugin.manifest.id)
-            withContext(Dispatchers.IO) {
-                plugin.init(ctx)
-                plugin.getChannels(ctx)
-                    // Re-stamp origin so badges reflect the user's source name.
-                    .map { it.copy(sourceId = source.id, sourceName = source.name) }
+            SourceKind.PLUGIN -> {
+                val def = plugins.firstOrNull { it.id == source.pluginId } ?: return emptyList()
+                PluginEngine.loadChannels(def, http, source.id, source.name)
             }
         }
-    }
 
     /** Drop exact duplicates (same playable url) that appear across playlists. */
     private fun dedupe(channels: List<Channel>): List<Channel> {

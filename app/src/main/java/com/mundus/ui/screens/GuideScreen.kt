@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -42,7 +42,7 @@ private const val WINDOW_HOURS = 6
 private val LABEL_WIDTH = 180.dp
 
 @Composable
-fun GuideScreen(state: UiState, onPlay: (Channel) -> Unit) {
+fun GuideScreen(state: UiState, onPlay: (List<Channel>, Int) -> Unit) {
     val theme = LocalSectionTheme.current
     val hScroll = rememberScrollState()
     val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
@@ -99,7 +99,7 @@ fun GuideScreen(state: UiState, onPlay: (Channel) -> Unit) {
         }
 
         LazyColumn(Modifier.fillMaxSize()) {
-            items(channels, key = { it.id }) { channel ->
+            itemsIndexed(channels, key = { _, it -> it.id }) { index, channel ->
                 GuideRow(
                     channel = channel,
                     programmes = state.guides[channel.epgChannelId]?.programmes.orEmpty(),
@@ -109,7 +109,7 @@ fun GuideScreen(state: UiState, onPlay: (Channel) -> Unit) {
                     hScroll = hScroll,
                     accent = theme.accent,
                     timeFmt = timeFmt,
-                    onPlay = { onPlay(channel) },
+                    onPlay = { onPlay(channels, index) },
                 )
             }
         }

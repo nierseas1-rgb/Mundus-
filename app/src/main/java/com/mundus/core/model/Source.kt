@@ -12,7 +12,7 @@ enum class SourceKind {
     /** An Xtream Codes account (host + username + password). */
     XTREAM,
 
-    /** Content provided by an installed [com.mundus.plugin.MundusPlugin] (e.g. Vavoo). */
+    /** Content provided by a user-installed plugin definition (e.g. Vavoo added by URL). */
     PLUGIN,
 }
 

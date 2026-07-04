@@ -45,19 +45,21 @@ l'ouverture de **Kodi** (plugins/add-ons personnalisés), et une identité visue
 
 ---
 
-## 🧩 Système de plugins (esprit Kodi)
+## 🧩 Système de plugins (esprit Kodi) — rien d'intégré, tout par URL
 
-Un plugin implémente l'interface [`MundusPlugin`](app/src/main/java/com/mundus/plugin/MundusPlugin.kt) :
-il transforme un « monde extérieur » (Vavoo, un site de streaming, une API perso) en
-chaînes Mundus, et peut **résoudre** un flux juste avant lecture (utile pour les URLs
-signées/éphémères).
+Aucun plugin n'est intégré au code. Depuis l'onglet **Plugins**, l'utilisateur ajoute
+**n'importe quel plugin en collant une URL** :
 
-- Contrat volontairement **sans dépendance à l'UI Android** → prêt pour un chargement
-  externe/sandboxé plus tard.
-- Le plugin **Vavoo** intégré montre le flux complet (catalogue configurable + résolution
-  + repli hors-ligne sur des données de démo).
+- soit une **définition JSON** ([`PluginDefinition`](app/src/main/java/com/mundus/plugin/PluginDefinition.kt))
+  qui décrit où trouver le catalogue (M3U, feed JSON ou Xtream), le mappage des champs,
+  un éventuel résolveur de flux, des en-têtes HTTP… ;
+- soit directement un lien **`.m3u`**, automatiquement transformé en plugin.
 
-Détails et feuille de route (chargement dynamique, sécurité) : **[docs/PLUGINS.md](docs/PLUGINS.md)**.
+Vavoo n'est qu'**un** plugin possible parmi d'autres : on l'ajoute via son URL, comme
+tout le reste. Le moteur générique [`PluginEngine`](app/src/main/java/com/mundus/plugin/PluginEngine.kt)
+exécute la définition et fusionne ses chaînes dans la bibliothèque.
+
+Détails, format de définition et feuille de route : **[docs/PLUGINS.md](docs/PLUGINS.md)**.
 
 ---
 

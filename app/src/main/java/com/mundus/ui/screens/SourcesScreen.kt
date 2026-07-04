@@ -147,14 +147,13 @@ private fun AddSourceDialog(onDismiss: () -> Unit, onAdd: (Source) -> Unit) {
     var user by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
     var epgUrl by remember { mutableStateOf("") }
-    var catalogUrl by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = {
                 val id = UUID.randomUUID().toString()
-                val src = when (kind) {
+                val src: Source? = when (kind) {
                     SourceKind.M3U -> Source(
                         id = id,
                         name = name.ifBlank { "Playlist M3U" },
@@ -171,15 +170,10 @@ private fun AddSourceDialog(onDismiss: () -> Unit, onAdd: (Source) -> Unit) {
                         xtreamPassword = pass.trim(),
                         epgUrl = epgUrl.trim().ifBlank { null },
                     )
-                    SourceKind.PLUGIN -> Source(
-                        id = id,
-                        name = name.ifBlank { "Vavoo" },
-                        kind = kind,
-                        pluginId = "vavoo",
-                        pluginConfig = buildMap { if (catalogUrl.isNotBlank()) put("catalog_url", catalogUrl.trim()) },
-                    )
+                    // Plugins are activated from the Plugins tab, not here.
+                    SourceKind.PLUGIN -> null
                 }
-                onAdd(src)
+                if (src != null) onAdd(src)
             }) { Text("Ajouter") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
@@ -189,28 +183,18 @@ private fun AddSourceDialog(onDismiss: () -> Unit, onAdd: (Source) -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     KindTab("M3U", kind == SourceKind.M3U) { kind = SourceKind.M3U }
                     KindTab("Xtream", kind == SourceKind.XTREAM) { kind = SourceKind.XTREAM }
-                    KindTab("Plugin", kind == SourceKind.PLUGIN) { kind = SourceKind.PLUGIN }
                 }
                 Field("Nom", name) { name = it }
                 when (kind) {
-                    SourceKind.M3U -> {
-                        Field("URL M3U", m3uUrl) { m3uUrl = it }
-                        Field("URL EPG XMLTV (optionnel)", epgUrl) { epgUrl = it }
-                    }
                     SourceKind.XTREAM -> {
                         Field("Hôte (http://serveur:port)", host) { host = it }
                         Field("Utilisateur", user) { user = it }
                         Field("Mot de passe", pass) { pass = it }
                         Field("URL EPG XMLTV (optionnel)", epgUrl) { epgUrl = it }
                     }
-                    SourceKind.PLUGIN -> {
-                        Text(
-                            "Plugin Vavoo. Laissez le catalogue vide pour la démo intégrée.",
-                            color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
-                        Field("URL catalogue (optionnel)", catalogUrl) { catalogUrl = it }
+                    else -> {
+                        Field("URL M3U", m3uUrl) { m3uUrl = it }
+                        Field("URL EPG XMLTV (optionnel)", epgUrl) { epgUrl = it }
                     }
                 }
             }
