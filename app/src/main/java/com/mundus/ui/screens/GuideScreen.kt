@@ -167,7 +167,7 @@ private fun GuideRow(
             if (visible.isEmpty()) {
                 ProgrammeBlock(
                     title = "Pas d'info EPG",
-                    widthDp = ((endMs - startMs) / 60_000L * PX_PER_MIN).dp,
+                    widthDp = ((endMs - startMs) / 60_000L * PX_PER_MIN).toInt().dp,
                     live = false,
                     progress = 0f,
                     subtitle = null,
@@ -182,7 +182,7 @@ private fun GuideRow(
                     val live = p.isLiveAt(nowMs)
                     ProgrammeBlock(
                         title = p.title,
-                        widthDp = (minutes * PX_PER_MIN).dp,
+                        widthDp = (minutes * PX_PER_MIN).toInt().dp,
                         live = live,
                         progress = if (live) p.progressAt(nowMs) else 0f,
                         subtitle = "${timeFmt.format(Date(p.startMs))}",
