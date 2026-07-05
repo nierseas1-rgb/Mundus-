@@ -43,7 +43,7 @@ private val routes = listOf(
     RouteEntry(Route.CHANNELS, "▦", "Chaînes"),
     RouteEntry(Route.GUIDE, "🕒", "Guide"),
     RouteEntry(Route.SOURCES, "＋", "Sources"),
-    RouteEntry(Route.PLUGINS, "🧩", "Plugins"),
+    RouteEntry(Route.PLUGINS, "🧩", "Add-ons"),
     RouteEntry(Route.SETTINGS, "⚙", "Réglages"),
 )
 

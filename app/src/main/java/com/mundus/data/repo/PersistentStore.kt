@@ -3,6 +3,7 @@ package com.mundus.data.repo
 import android.content.Context
 import com.mundus.core.model.PlayerSettings
 import com.mundus.core.model.Source
+import com.mundus.plugin.AddonRepo
 import com.mundus.plugin.PluginDefinition
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -15,6 +16,7 @@ import java.io.File
 data class AppState(
     val sources: List<Source> = emptyList(),
     val plugins: List<PluginDefinition> = emptyList(),
+    val repos: List<AddonRepo> = emptyList(),
     val settings: PlayerSettings = PlayerSettings.Default,
     val favorites: Set<String> = emptySet(),
     val activeSectionId: String = "live_tv",

@@ -3,7 +3,21 @@
 Les plugins sont la brique « ouverte » de Mundus. **Aucun n'est fourni avec l'app** :
 l'utilisateur ajoute n'importe quel plugin depuis l'onglet **Plugins** en collant une URL.
 
-## Deux façons d'ajouter un plugin
+## Le catalogue d'add-ons (façon Kodi)
+
+L'onglet **Add-ons** fonctionne comme le gestionnaire d'add-ons de Kodi :
+
+- **Catalogue** : une liste d'add-ons **installables** (un petit catalogue intégré —
+  Vavoo + playlists publiques iptv-org — plus tout ce qu'apportent les dépôts).
+  On clique **Installer**, puis **Activer** pour connecter l'add-on.
+- **Dépôts** : on ajoute une URL de **dépôt** (un JSON `PluginCatalog` : `{ "name": ...,
+  "addons": [ ...définitions... ] }`, ou un simple tableau de définitions). Ses add-ons
+  viennent grossir le catalogue.
+- **Installés** : les add-ons installés, à activer / supprimer.
+
+Rien n'est actif tant que l'utilisateur n'a pas installé **puis** activé.
+
+## Deux façons d'ajouter un plugin manuellement
 
 1. **Un lien `.m3u` / `.m3u8`** → transformé automatiquement en plugin M3U.
 2. **Une URL vers une définition JSON** (le format ci-dessous) → plugin M3U, JSON ou Xtream.

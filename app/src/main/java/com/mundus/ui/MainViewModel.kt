@@ -11,6 +11,8 @@ import com.mundus.core.model.Section
 import com.mundus.core.model.Source
 import com.mundus.data.repo.AppState
 import com.mundus.di.AppContainer
+import com.mundus.plugin.AddonRepo
+import com.mundus.plugin.BuiltInCatalog
 import com.mundus.plugin.PlayableStream
 import com.mundus.plugin.PluginDefinition
 import com.mundus.plugin.PluginEngine
@@ -28,6 +30,9 @@ data class UiState(
     val activeSection: Section = Section.LIVE_TV,
     val sources: List<Source> = emptyList(),
     val plugins: List<PluginDefinition> = emptyList(),
+    val repos: List<AddonRepo> = emptyList(),
+    /** Add-ons available to install (built-in catalogue + repositories). */
+    val catalogAddons: List<PluginDefinition> = emptyList(),
     val allChannels: List<Channel> = emptyList(),
     val settings: PlayerSettings = PlayerSettings.Default,
     val favorites: Set<String> = emptySet(),
@@ -62,12 +67,15 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
             it.copy(
                 sources = persisted.sources,
                 plugins = persisted.plugins,
+                repos = persisted.repos,
+                catalogAddons = BuiltInCatalog.addons(),
                 settings = persisted.settings,
                 favorites = persisted.favorites,
                 activeSection = Section.fromId(persisted.activeSectionId),
             )
         }
         refresh()
+        refreshCatalog()
     }
 
     fun setSection(section: Section) {
@@ -169,6 +177,71 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         _state.update { it.copy(pluginMessage = null) }
     }
 
+    // --- Add-on catalogue / repositories (Kodi-style) ---
+
+    /** Re-fetch every repository and merge with the built-in catalogue. */
+    fun refreshCatalog() {
+        val repos = _state.value.repos
+        viewModelScope.launch {
+            val repoAddons = withContext(Dispatchers.IO) {
+                repos.flatMap { repo ->
+                    runCatching { container.pluginRepository.fetchCatalog(repo.url).addons }
+                        .getOrDefault(emptyList())
+                }
+            }
+            _state.update { it.copy(catalogAddons = mergeCatalog(BuiltInCatalog.addons(), repoAddons)) }
+        }
+    }
+
+    /** Add an add-on repository by URL and merge its catalogue. */
+    fun addRepo(url: String) {
+        if (url.isBlank()) return
+        viewModelScope.launch {
+            _state.update { it.copy(pluginMessage = "Chargement du dépôt…") }
+            val result = withContext(Dispatchers.IO) {
+                runCatching { container.pluginRepository.fetchCatalog(url) }
+            }
+            result.onSuccess { cat ->
+                val repo = AddonRepo(java.util.UUID.randomUUID().toString(), cat.name, url.trim())
+                _state.update {
+                    val repos = it.repos.filterNot { r -> r.url == repo.url } + repo
+                    it.copy(
+                        repos = repos,
+                        catalogAddons = mergeCatalog(it.catalogAddons, cat.addons),
+                        pluginMessage = "Dépôt ajouté : ${cat.name} (${cat.addons.size} add-ons)",
+                    )
+                }
+                persist()
+            }.onFailure { e ->
+                _state.update { it.copy(pluginMessage = "Échec du dépôt : ${e.message ?: "URL invalide"}") }
+            }
+        }
+    }
+
+    fun removeRepo(id: String) {
+        _state.update { it.copy(repos = it.repos.filterNot { r -> r.id == id }) }
+        persist()
+        refreshCatalog()
+    }
+
+    /** Install an add-on from the catalogue (adds its definition to installed plugins). */
+    fun installAddon(def: PluginDefinition) {
+        _state.update {
+            val others = it.plugins.filterNot { p -> p.id == def.id }
+            it.copy(plugins = others + def, pluginMessage = "Add-on installé : ${def.name}")
+        }
+        persist()
+    }
+
+    private fun mergeCatalog(
+        a: List<PluginDefinition>,
+        b: List<PluginDefinition>,
+    ): List<PluginDefinition> {
+        val map = LinkedHashMap<String, PluginDefinition>()
+        (a + b).forEach { map[it.id] = it }
+        return map.values.toList()
+    }
+
     /** Activate an installed plugin as a merged source. */
     fun activatePlugin(def: PluginDefinition) {
         if (_state.value.sources.any { it.pluginId == def.id }) return
@@ -221,6 +294,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
             AppState(
                 sources = s.sources,
                 plugins = s.plugins,
+                repos = s.repos,
                 settings = s.settings,
                 favorites = s.favorites,
                 activeSectionId = s.activeSection.id,

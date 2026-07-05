@@ -54,4 +54,19 @@ class PluginRepository(private val http: Http) {
             sourceUrl = trimmed,
         )
     }
+
+    /**
+     * Fetch a repository's catalogue of installable add-ons. Accepts either a
+     * `{ "name": ..., "addons": [ ... ] }` document or a bare array of definitions.
+     */
+    fun fetchCatalog(url: String): PluginCatalog {
+        val body = http.getText(url.trim())
+        runCatching { json.decodeFromString<PluginCatalog>(body) }
+            .getOrNull()
+            ?.takeIf { it.addons.isNotEmpty() }
+            ?.let { return it }
+        val addons = runCatching { json.decodeFromString<List<PluginDefinition>>(body) }
+            .getOrDefault(emptyList())
+        return PluginCatalog(name = "Dépôt", addons = addons)
+    }
 }
