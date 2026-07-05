@@ -22,9 +22,12 @@ class PluginRepository(private val http: Http) {
     fun fetchDefinition(url: String): PluginDefinition {
         val trimmed = url.trim()
 
-        // Pasting a Vavoo address spins up the native Vavoo connector.
-        if (trimmed.contains("vavoo.", ignoreCase = true)) {
-            return VavooConnector.defaultDefinition(UUID.randomUUID().toString())
+        // Pasting a MediaHubMX-family address (Vavoo/Huhu/Kool/…) spins up that connector.
+        val mediaHubHosts = listOf("vavoo.", "huhu.", "kool.", "oha.", "ollytv", "doytv")
+        if (mediaHubHosts.any { trimmed.contains(it, ignoreCase = true) }) {
+            val host = extractOrigin(trimmed)
+            val name = host.substringAfter("://").replaceFirstChar { it.uppercase() }
+            return VavooConnector.definitionFor(UUID.randomUUID().toString(), name, host)
         }
 
         val looksLikeM3u = trimmed.substringBefore('?').endsWith(".m3u", true) ||
@@ -53,6 +56,15 @@ class PluginRepository(private val http: Http) {
             catalogUrl = trimmed,
             sourceUrl = trimmed,
         )
+    }
+
+    /** Extract "scheme://host" from a possibly-pathful url, defaulting to https. */
+    private fun extractOrigin(url: String): String {
+        var u = url.trim()
+        if (!u.startsWith("http", ignoreCase = true)) u = "https://$u"
+        val schemeEnd = u.indexOf("://").let { if (it < 0) return u else it }
+        val host = u.substring(schemeEnd + 3).substringBefore('/').substringBefore('?')
+        return u.substring(0, schemeEnd + 3) + host
     }
 
     /**

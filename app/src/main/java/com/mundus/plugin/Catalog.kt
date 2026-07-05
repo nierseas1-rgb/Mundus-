@@ -30,7 +30,9 @@ data class PluginCatalog(
  */
 object BuiltInCatalog {
     fun addons(): List<PluginDefinition> = listOf(
-        VavooConnector.defaultDefinition("builtin-vavoo"),
+        VavooConnector.definitionFor("builtin-vavoo", "Vavoo", "https://vavoo.to"),
+        VavooConnector.definitionFor("builtin-huhu", "Huhu.to", "https://huhu.to"),
+        VavooConnector.definitionFor("builtin-kool", "Kool.to", "https://kool.to"),
         m3u(
             "builtin-iptvorg-fr", "IPTV-Org France",
             "Chaînes publiques françaises (gratuit, iptv-org)",

@@ -12,44 +12,57 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
 /**
- * Best-effort connector for Vavoo (vavoo.to).
+ * Best-effort connector for the MediaHubMX family of free services — **Vavoo.to,
+ * Huhu.to, Kool.to** and clones — which all share the same backend and signing scheme.
  *
- * Vavoo doesn't serve a plain playlist: each stream needs a short-lived signature
+ * These don't serve a plain playlist: each stream needs a short-lived signature
  * (`mediahubmx-signature`) obtained from a signing endpoint and sent as an HTTP header,
- * together with the MediaHubMX user-agent. This connector:
- *   1. lists channels from the catalogue endpoint,
+ * with the MediaHubMX user-agent. This connector:
+ *   1. lists channels from `<host>/channels`,
  *   2. at play time, requests a signature and returns the play url + required headers.
  *
- * IMPORTANT: Vavoo's endpoints/params are unofficial and change over time. Everything
- * here is overridable via the [PluginDefinition] so it can be fixed without a new build,
- * and failures degrade gracefully (the channel list still loads; a stream that can't be
- * signed is attempted with just the user-agent).
+ * The host is taken from [PluginDefinition.catalogUrl], so one connector serves any of
+ * these services. Everything is overridable and failures degrade gracefully.
+ *
+ * IMPORTANT: these endpoints are unofficial and change over time; adjust via the
+ * definition if a service tweaks its API.
  */
 object VavooConnector {
 
-    private const val DEFAULT_CATALOG = "https://vavoo.to/channels"
-    private const val DEFAULT_SIGN = "https://vavoo.to/vto-cluster/mediahubmx-signature.json"
-    private const val DEFAULT_UA = "MediaHubMX/2"
-    private const val DEFAULT_SIG_HEADER = "mediahubmx-signature"
+    private const val UA = "MediaHubMX/2"
+    private const val SIG_HEADER = "mediahubmx-signature"
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    fun defaultDefinition(id: String): PluginDefinition = PluginDefinition(
-        id = id,
-        name = "Vavoo",
-        description = "Chaînes Vavoo (connecteur natif, bêta).",
-        type = PluginType.VAVOO,
-        catalogUrl = DEFAULT_CATALOG,
-        signUrl = DEFAULT_SIGN,
-        userAgent = DEFAULT_UA,
-        requiresResolution = true,
-        sourceUrl = "vavoo.to",
-    )
+    /** Build a definition for any MediaHubMX host (e.g. https://huhu.to). */
+    fun definitionFor(id: String, name: String, host: String): PluginDefinition {
+        val h = host.trim().trimEnd('/')
+        return PluginDefinition(
+            id = id,
+            name = name,
+            description = "$name — connecteur MediaHubMX (bêta).",
+            type = PluginType.VAVOO,
+            catalogUrl = "$h/channels",
+            signUrl = "$h/vto-cluster/mediahubmx-signature.json",
+            userAgent = UA,
+            requiresResolution = true,
+            sourceUrl = h,
+        )
+    }
+
+    fun defaultDefinition(id: String): PluginDefinition =
+        definitionFor(id, "Vavoo", "https://vavoo.to")
+
+    private fun baseOf(def: PluginDefinition): String {
+        val c = def.catalogUrl.trim()
+        val base = if (c.contains("/channels")) c.substringBefore("/channels") else c.trimEnd('/')
+        return base.ifBlank { "https://vavoo.to" }
+    }
 
     fun loadChannels(def: PluginDefinition, http: Http, sourceId: String, sourceName: String): List<Channel> {
-        val catalog = def.catalogUrl.ifBlank { DEFAULT_CATALOG }
-        val ua = def.userAgent?.ifBlank { null } ?: DEFAULT_UA
-        val body = http.getText(catalog, mapOf("User-Agent" to ua))
+        val base = baseOf(def)
+        val ua = def.userAgent?.ifBlank { null } ?: UA
+        val body = http.getText(def.catalogUrl.ifBlank { "$base/channels" }, mapOf("User-Agent" to ua))
         val array = json.parseToJsonElement(body) as? JsonArray ?: return emptyList()
 
         return array.mapNotNull { el ->
@@ -58,8 +71,7 @@ object VavooConnector {
             val id = obj.str("id") ?: name
             val group = obj.str("group") ?: obj.str("category")
             val logo = obj.str("logo") ?: obj.str("image")
-            // Some catalogues include a ready url; otherwise derive the play url.
-            val play = obj.str("url") ?: "https://vavoo.to/play/$id/index.m3u8"
+            val play = obj.str("url") ?: "$base/play/$id/index.m3u8"
             Channel(
                 id = "$sourceId:$id",
                 name = name,
@@ -75,9 +87,10 @@ object VavooConnector {
     }
 
     fun resolve(def: PluginDefinition, http: Http, channel: Channel): PlayableStream {
-        val ua = def.userAgent?.ifBlank { null } ?: DEFAULT_UA
-        val sigHeader = def.signatureHeader?.ifBlank { null } ?: DEFAULT_SIG_HEADER
-        val signUrl = def.signUrl?.ifBlank { null } ?: DEFAULT_SIGN
+        val base = baseOf(def)
+        val ua = def.userAgent?.ifBlank { null } ?: UA
+        val sigHeader = def.signatureHeader?.ifBlank { null } ?: SIG_HEADER
+        val signUrl = def.signUrl?.ifBlank { null } ?: "$base/vto-cluster/mediahubmx-signature.json"
         val baseHeaders = mapOf("User-Agent" to ua)
 
         val signature = runCatching {
@@ -92,11 +105,7 @@ object VavooConnector {
             obj?.str("signature") ?: obj?.str("signed") ?: obj?.str("data")
         }.getOrNull()
 
-        val headers = if (!signature.isNullOrBlank()) {
-            baseHeaders + (sigHeader to signature)
-        } else {
-            baseHeaders
-        }
+        val headers = if (!signature.isNullOrBlank()) baseHeaders + (sigHeader to signature) else baseHeaders
         return PlayableStream(channel.streamUrl, headers)
     }
 

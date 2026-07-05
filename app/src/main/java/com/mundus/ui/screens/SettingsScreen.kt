@@ -25,6 +25,7 @@ import com.mundus.core.model.PlayerSettings
 import com.mundus.theme.LocalSectionTheme
 import com.mundus.ui.MainViewModel
 import com.mundus.ui.UiState
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(state: UiState, vm: MainViewModel) {
@@ -38,7 +39,7 @@ fun SettingsScreen(state: UiState, vm: MainViewModel) {
             Column {
                 Text("Réglages", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "Options de lecture classiques : mémoire tampon, délais, décodage.",
+                    "Mémoire tampon et latence réglables de 1 à 10 pour rendre les flux fluides.",
                     color = Color.White.copy(alpha = 0.55f),
                     fontSize = 13.sp,
                 )
@@ -46,43 +47,47 @@ fun SettingsScreen(state: UiState, vm: MainViewModel) {
         }
 
         item {
-            SettingCard("Mémoire tampon") {
-                SliderRow(
+            SettingCard("Mémoire tampon (1 → 10)") {
+                LevelRow(
                     label = "Tampon minimum",
-                    valueMs = s.minBufferMs,
-                    range = 2_000f..120_000f,
-                    onChange = { vm.updateSettings(s.copy(minBufferMs = it)) },
+                    hint = "Plus haut = démarrage plus sûr",
+                    level = s.minBufferLevel,
+                    approxSeconds = s.minBufferMs / 1000f,
+                    onChange = { vm.updateSettings(s.copy(minBufferLevel = it)) },
                 )
-                SliderRow(
+                LevelRow(
                     label = "Tampon maximum",
-                    valueMs = s.maxBufferMs,
-                    range = 10_000f..600_000f,
-                    onChange = { vm.updateSettings(s.copy(maxBufferMs = it)) },
+                    hint = "Plus haut = plus fluide, plus de RAM",
+                    level = s.maxBufferLevel,
+                    approxSeconds = s.maxBufferMs / 1000f,
+                    onChange = { vm.updateSettings(s.copy(maxBufferLevel = it)) },
                 )
-                SliderRow(
-                    label = "Tampon avant lecture (zapping)",
-                    valueMs = s.bufferForPlaybackMs,
-                    range = 500f..30_000f,
-                    onChange = { vm.updateSettings(s.copy(bufferForPlaybackMs = it)) },
+                LevelRow(
+                    label = "Latence / démarrage",
+                    hint = "Bas = zapping rapide • Haut = plus stable",
+                    level = s.latencyLevel,
+                    approxSeconds = s.bufferForPlaybackMs / 1000f,
+                    onChange = { vm.updateSettings(s.copy(latencyLevel = it)) },
                 )
-                SliderRow(
-                    label = "Tampon après coupure",
-                    valueMs = s.bufferForPlaybackAfterRebufferMs,
-                    range = 1_000f..60_000f,
-                    onChange = { vm.updateSettings(s.copy(bufferForPlaybackAfterRebufferMs = it)) },
+                Text(
+                    "Astuce : pour Vavoo / Huhu.to / Kool.to, montez « Latence » et « Tampon max » " +
+                        "à 7–9 pour un rendu proche du vrai IPTV.",
+                    color = Color.White.copy(alpha = 0.45f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
         }
 
         item {
             SettingCard("Réseau") {
-                SliderRow(
+                SecondsRow(
                     label = "Délai de connexion",
                     valueMs = s.connectTimeoutMs,
                     range = 2_000f..60_000f,
                     onChange = { vm.updateSettings(s.copy(connectTimeoutMs = it)) },
                 )
-                SliderRow(
+                SecondsRow(
                     label = "Délai de lecture",
                     valueMs = s.readTimeoutMs,
                     range = 2_000f..60_000f,
@@ -111,7 +116,7 @@ fun SettingsScreen(state: UiState, vm: MainViewModel) {
 
         item {
             Text(
-                "Mundus v0.1 — projet ouvert. Les plugins étendent les sources façon Kodi.",
+                "Mundus v0.1 — projet ouvert. Les add-ons étendent les sources façon Kodi.",
                 color = Color.White.copy(alpha = 0.35f),
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 8.dp),
@@ -135,7 +140,48 @@ private fun SettingCard(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SliderRow(label: String, valueMs: Int, range: ClosedFloatingPointRange<Float>, onChange: (Int) -> Unit) {
+private fun LevelRow(
+    label: String,
+    hint: String,
+    level: Int,
+    approxSeconds: Float,
+    onChange: (Int) -> Unit,
+) {
+    val theme = LocalSectionTheme.current
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(hint, color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
+            }
+            Text(
+                "$level/10",
+                color = theme.accent,
+                fontWeight = FontWeight.Black,
+                fontSize = 16.sp,
+            )
+        }
+        Slider(
+            value = level.toFloat(),
+            onValueChange = { onChange(it.roundToInt().coerceIn(1, 10)) },
+            valueRange = 1f..10f,
+            steps = 8,
+        )
+        Text(
+            "≈ ${"%.1f".format(approxSeconds)} s",
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 11.sp,
+        )
+    }
+}
+
+@Composable
+private fun SecondsRow(
+    label: String,
+    valueMs: Int,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Int) -> Unit,
+) {
     val theme = LocalSectionTheme.current
     Column(Modifier.padding(vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
