@@ -3,7 +3,13 @@ package com.mundus.plugin
 import kotlinx.serialization.Serializable
 
 /** How a plugin exposes its catalogue. */
-enum class PluginType { M3U, JSON, XTREAM }
+enum class PluginType { M3U, JSON, XTREAM, VAVOO }
+
+/** A concrete, playable stream: a url plus any HTTP headers required to fetch it. */
+data class PlayableStream(
+    val url: String,
+    val headers: Map<String, String> = emptyMap(),
+)
 
 /**
  * Field mapping for [PluginType.JSON] plugins: which JSON keys hold the channel
@@ -44,6 +50,12 @@ data class PluginDefinition(
     val resolverUrl: String? = null,
     /** True when streams must be passed through [resolverUrl] before playback. */
     val requiresResolution: Boolean = false,
+
+    // --- Vavoo (type == VAVOO) — all optional, sensible defaults live in VavooConnector ---
+    /** Override for Vavoo's signature endpoint. */
+    val signUrl: String? = null,
+    /** Header name carrying the signature (default handled by the connector). */
+    val signatureHeader: String? = null,
 
     /** Optional HTTP headers some sources require. */
     val userAgent: String? = null,

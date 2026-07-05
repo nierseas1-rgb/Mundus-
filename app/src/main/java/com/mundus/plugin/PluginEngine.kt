@@ -44,15 +44,21 @@ object PluginEngine {
             val body = http.getText(def.catalogUrl, def.headers())
             parseJson(def, body, sourceId, sourceName)
         }
+
+        PluginType.VAVOO -> VavooConnector.loadChannels(def, http, sourceId, sourceName)
     }
 
-    /** Resolve a channel to a concrete playable url, if the plugin needs it. */
-    fun resolve(def: PluginDefinition, http: Http, channel: Channel): String {
-        val resolver = def.resolverUrl?.takeIf { it.isNotBlank() } ?: return channel.streamUrl
-        return runCatching {
+    /** Resolve a channel to a concrete, playable stream (url + required headers). */
+    fun resolve(def: PluginDefinition, http: Http, channel: Channel): PlayableStream {
+        if (def.type == PluginType.VAVOO) return VavooConnector.resolve(def, http, channel)
+
+        val resolver = def.resolverUrl?.takeIf { it.isNotBlank() }
+            ?: return PlayableStream(channel.streamUrl, def.headers())
+        val url = runCatching {
             http.getText("$resolver${channel.streamUrl}", def.headers()).trim()
                 .ifBlank { channel.streamUrl }
         }.getOrDefault(channel.streamUrl)
+        return PlayableStream(url, def.headers())
     }
 
     private fun parseJson(

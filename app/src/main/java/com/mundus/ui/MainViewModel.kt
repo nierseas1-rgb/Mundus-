@@ -11,8 +11,11 @@ import com.mundus.core.model.Section
 import com.mundus.core.model.Source
 import com.mundus.data.repo.AppState
 import com.mundus.di.AppContainer
+import com.mundus.plugin.PlayableStream
 import com.mundus.plugin.PluginDefinition
 import com.mundus.plugin.PluginEngine
+import com.mundus.plugin.PluginType
+import com.mundus.plugin.VavooConnector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,6 +142,16 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** One-tap add of the native Vavoo connector (VAVOO type needs no URL). */
+    fun addVavooPlugin() {
+        val def = VavooConnector.defaultDefinition(java.util.UUID.randomUUID().toString())
+        _state.update {
+            val others = it.plugins.filterNot { p -> p.type == PluginType.VAVOO }
+            it.copy(plugins = others + def, pluginMessage = "Vavoo ajouté — activez-le ci-dessous.")
+        }
+        persist()
+    }
+
     fun removePlugin(id: String) {
         _state.update { st ->
             st.copy(
@@ -186,17 +199,19 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     fun channelById(id: String): Channel? = _state.value.allChannels.firstOrNull { it.id == id }
 
     /**
-     * Resolve a channel to a concrete playable url just before playback. Plugin
-     * channels may need a resolve step; direct urls pass through.
+     * Resolve a channel to a concrete playable stream (url + headers) just before
+     * playback. Plugin channels may need a resolve/signature step; direct urls pass
+     * through with no extra headers.
      */
-    suspend fun resolvePlayableUrl(channel: Channel): String {
-        if (!channel.requiresResolution) return channel.streamUrl
+    suspend fun resolvePlayable(channel: Channel): PlayableStream {
+        if (!channel.requiresResolution) return PlayableStream(channel.streamUrl)
         val s = _state.value
         val source = s.sources.firstOrNull { it.id == channel.sourceId }
-        val def = s.plugins.firstOrNull { it.id == source?.pluginId } ?: return channel.streamUrl
+        val def = s.plugins.firstOrNull { it.id == source?.pluginId }
+            ?: return PlayableStream(channel.streamUrl)
         return withContext(Dispatchers.IO) {
             runCatching { PluginEngine.resolve(def, container.http, channel) }
-                .getOrDefault(channel.streamUrl)
+                .getOrDefault(PlayableStream(channel.streamUrl))
         }
     }
 

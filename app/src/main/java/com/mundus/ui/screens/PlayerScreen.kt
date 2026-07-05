@@ -52,6 +52,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
@@ -135,11 +137,19 @@ fun PlayerScreen(
         error = null
         buffering = true
         controlsVisible = true
-        val url = runCatching { vm.resolvePlayableUrl(channel) }.getOrElse {
+        val stream = runCatching { vm.resolvePlayable(channel) }.getOrElse {
             error = it.message; null
         }
-        if (url != null) {
-            exo.setMediaItem(MediaItem.fromUri(url))
+        if (stream != null) {
+            val ua = stream.headers["User-Agent"] ?: settings.userAgent
+            val extraHeaders = stream.headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) }
+            val httpFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent(ua)
+                .setAllowCrossProtocolRedirects(true)
+                .apply { if (extraHeaders.isNotEmpty()) setDefaultRequestProperties(extraHeaders) }
+            val source = DefaultMediaSourceFactory(httpFactory)
+                .createMediaSource(MediaItem.fromUri(stream.url))
+            exo.setMediaSource(source)
             exo.prepare()
             exo.playWhenReady = true
         }

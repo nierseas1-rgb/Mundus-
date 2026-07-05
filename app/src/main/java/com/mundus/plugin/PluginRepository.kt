@@ -21,6 +21,12 @@ class PluginRepository(private val http: Http) {
      */
     fun fetchDefinition(url: String): PluginDefinition {
         val trimmed = url.trim()
+
+        // Pasting a Vavoo address spins up the native Vavoo connector.
+        if (trimmed.contains("vavoo.", ignoreCase = true)) {
+            return VavooConnector.defaultDefinition(UUID.randomUUID().toString())
+        }
+
         val looksLikeM3u = trimmed.substringBefore('?').endsWith(".m3u", true) ||
             trimmed.substringBefore('?').endsWith(".m3u8", true)
 

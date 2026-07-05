@@ -85,6 +85,25 @@ fun PluginsScreen(state: UiState, vm: MainViewModel) {
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
             }
+            Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Raccourcis :",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                Text(
+                    "＋ Vavoo (bêta)",
+                    color = theme.accent,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(theme.accent.copy(alpha = 0.16f))
+                        .clickable { vm.addVavooPlugin() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
         }
 
         Text(
