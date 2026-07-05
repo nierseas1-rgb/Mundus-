@@ -103,6 +103,12 @@ fun PlayerScreen(
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
+    // Auto-reconnect / re-signature state.
+    var reloadKey by remember { mutableIntStateOf(0) }
+    var attempts by remember { mutableIntStateOf(0) }
+    var reconnecting by remember { mutableStateOf(false) }
+    val maxAttempts = 5
+
     // Keep "now" fresh for EPG progress.
     LaunchedEffect(Unit) {
         while (true) {
@@ -119,6 +125,10 @@ fun PlayerScreen(
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                if (playing) {
+                    attempts = 0
+                    reconnecting = false
+                }
             }
 
             override fun onPlayerError(e: PlaybackException) {
@@ -132,11 +142,17 @@ fun PlayerScreen(
         }
     }
 
-    // Load / switch channel.
+    // Reset the retry counter whenever the user switches channel.
     LaunchedEffect(index) {
+        attempts = 0
+        reconnecting = false
+    }
+
+    // Load / (re)sign / switch channel. Re-runs on channel change AND on reconnect.
+    LaunchedEffect(index, reloadKey) {
         error = null
         buffering = true
-        controlsVisible = true
+        // Re-resolving re-signs the stream (fresh token for Vavoo/Huhu/Kool).
         val stream = runCatching { vm.resolvePlayable(channel) }.getOrElse {
             error = it.message; null
         }
@@ -152,6 +168,21 @@ fun PlayerScreen(
             exo.setMediaSource(source)
             exo.prepare()
             exo.playWhenReady = true
+        }
+    }
+
+    // On playback error, auto-reconnect with back-off (re-signs on each attempt).
+    LaunchedEffect(error) {
+        val e = error
+        when {
+            e != null && settings.autoReconnect && attempts < maxAttempts -> {
+                reconnecting = true
+                attempts += 1
+                delay(1200L * attempts)
+                error = null
+                reloadKey += 1
+            }
+            e != null -> reconnecting = false
         }
     }
 
@@ -193,23 +224,36 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (buffering && error == null) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
-        }
-        error?.let {
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("⚠ $it", color = Color(0xFFE0736B), fontSize = 15.sp)
-                Text(
-                    "Réessayer",
-                    color = Color.Black,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White)
-                        .clickable { exo.prepare(); error = null }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+        when {
+            reconnecting -> {
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color.White)
+                    Text(
+                        "Reconnexion… ($attempts/$maxAttempts)",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
+            }
+            buffering && error == null -> {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
+            }
+            error != null -> {
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("⚠ $error", color = Color(0xFFE0736B), fontSize = 15.sp)
+                    Text(
+                        "Réessayer",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White)
+                            .clickable { attempts = 0; error = null; reloadKey += 1 }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
 
